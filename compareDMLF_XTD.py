@@ -547,46 +547,71 @@ parser.add_argument ('path2', help='path of the new DMLF file (default) or folde
 parser.add_argument ('-d', '--dir', action='store_true', help='Indicate path1 & path2 are to directories')
 parser.add_argument ('--dev', default = '', help = 'Device name, only needed when paths are directories. E.g --dev 90337BA')
 parser.add_argument ('--cond', default = '', help = 'The list of compared condtions, only needed when paths are directories. E.g --cond PR35,PR150,PR175')
-parser.add_argument ('--spec', default = '', help = 'The list of compared spec versions, only needed when paths are directories. E.g --spec 002.05,002.06')
+parser.add_argument ('--spec', default = '', help = 'The list of compared spec versions, only needed when paths are directories and can only put max 2 spec versions. E.g --spec 002.05,002.06')
 parser.add_argument ('--renameFile', default = '', help='The link of renamed parameter file. E.g --renameFile renamedParam_12125.csv')
 parser.add_argument ('--ignore', default='', choices=LimitsParamStruct._fields, help='The list of ignored fields in the parameter comparison')
 parser.add_argument ('--hide', default='', help='The list of hided fields in the report file. E.g --hide PROMPT,MIN,MAX,ERROR,DISPLAY,RES,BIN,ARRAY_SIZE,LOG,ERROR,GROUP,TEST')
 args = parser.parse_args ()
 
-pathFile1 = os.path.abspath (args.path1)
-pathFile2 = os.path.abspath (args.path2)
-baseNameFile1 = os.path.basename (args.path1)
-baseNameFile2 = os.path.basename (args.path2)
+path1 = os.path.abspath (args.path1)
+path2 = os.path.abspath (args.path2)
+baseName1 = os.path.basename (args.path1)
+baseName2 = os.path.basename (args.path2)
 
-# Check the Paths are valid
+# Check the Paths are valid & other arguments
 if (args.dir):
-    if ('.' in baseNameFile1) :
-        sys.exit ("Error: Invalid directory path : " + pathFile1)
-    elif ('.' in baseNameFile2):
-        sys.exit ("Error: Invalid directory path : " + pathFile2)
+    if ('.' in baseName1) :
+        sys.exit ("Error: Invalid directory path : " + path1)
+    elif ('.' in baseName2):
+        sys.exit ("Error: Invalid directory path : " + path2)
 
     if not (args.dev):
         sys.exit ("Error: Please specify device name with --dev=deviceName")
     else:
-        devcie = args.dev
+        device = args.dev
+        
     if not (args.cond):
         sys.exit ("Error: Please specify conditions with --cond='listOfConditions'")
     else:
-        conditions = args.cond.strip('\'')
+        conds = args.cond.strip('\'')
+        conditions = conds.split(',')
 
     if not (args.spec):
         sys.exit ("Error: Please spec versions with --spec='listOfSpecVersion'")
     else:
         specs = args.spec.strip('\'')
+        versions = specs.split(',') 
+        if (len(versions) > 2) :
+          sys.exit ("Error: Only can put max 2 spec conditions")
 else:
-    if ('.' not in baseNameFile1) :
-        sys.exit("Error: Invalid DMLF file path : " + pathFile1)
-    elif ('.' not in baseNameFile2):
-        sys.exit("Error: Invalid DMLF file path : " + pathFile2)
+    if ('.' not in baseName1) :
+        sys.exit("Error: Invalid DMLF file path : " + path1)
+    elif ('.' not in baseName2):
+        sys.exit("Error: Invalid DMLF file path : " + path2)
 
+comparedFiles = dict ()
+comparedFiles.clear()
+if(args.dir):    
+    if len(versions) == 2:
+      ver1 = versions[0]
+      ver2 = versions[1]
+    elif len(versions) == 1:  
+      ver1 = versions[0]
+      ver2 = versions[0]
+
+    comparedFiles.clear()
+    for cond in conditions:
+      fileVer1 = device + '.' + cond + '.' + ver1
+      fileVer2 = device + '.' + cond + '.' + ver2
+      comparedFiles[fileVer1] = fileVer2      
+else:
+  comparedFiles[baseName1] = baseName2      
+      
 # Define output file:
-#        Output file sheets : Log sheet - Diff_Bincodes - Diff_Limits - Diff_Inputs
-pathOutputFile = os.path.abspath (os.path.join (os.getcwd (), 'diff_' + baseNameFile1 + '_' + baseNameFile2 + '.xlsx'))
+#        Output file sheets : Log sheet - Diff_Bincodes - Diff_Limits - Diff_Inputs   
+name1 = baseName1.replace('.','_')
+name2 = baseName2.replace('.','_')
+pathOutputFile = os.path.abspath (os.path.join (os.getcwd (), 'diff_' + name1 + '_vs_' + name2 + '.xlsx'))
 outputFile = xlsxwriter.Workbook (pathOutputFile)
 outputFileLogSheet = outputFile.add_worksheet ('Log')   # pointer to Log sheet
 outputFileDiffBincodesSheet = outputFile.add_worksheet ('Diff_Bincodes') # pointer to Diff_Limits sheet
@@ -595,7 +620,6 @@ outputFileDiffInputsSheet = outputFile.add_worksheet ('Diff_Inputs') # pointer t
 # outputFileDiffSheet = outputFile.add_worksheet ('Diff') # pointer to Diff_Limits sheet
 
 xlsxBoldTextFormat = outputFile.add_format ({'bold': True})
-
 # Define format for the comparison:
 #    Removed field: Gray filled
 #    Added field: Cyan filled
@@ -611,66 +635,72 @@ xlsxFormatChanged.set_bg_color ('#FFFF00')
 xlsxFormatRenamed = outputFile.add_format ()
 xlsxFormatRenamed.set_bg_color ('#00FF00')
 
-# Read DMLF files: path2
-binDict1 = dict ()
-limitsParamDict1 = dict ()
-inputsParamDict1 = dict ()
-parseDMLFFile (pathFile1, binDict1, limitsParamDict1, inputsParamDict1)
-
-# Read DMLF files: path2
-binDict2 = dict ()
-limitsParamDict2 = dict ()
-inputsParamDict2 = dict ()
-parseDMLFFile (pathFile2, binDict2, limitsParamDict2, inputsParamDict2)
-
-# Read rename file
-renameTable = dict ()
-renameTable['Old_ParamName'] = 'New_ParamName' # Dummy rename table
-if args.renameFile:
-  # Update rename table & write to the output file
-  pathRenameFile = os.path.abspath (args.renameFile)
-  outputFileRenameSheet = outputFile.add_worksheet ('RenameTable')
-  parseRenameFile (pathRenameFile, renameTable)
-
-# Output file: Write to Log sheet
-LogRow = 0
-LogMessage ('Read ' + pathFile1)
-LogMessage ('Read ' + pathFile2)
-if args.renameFile:
-    LogMessage ('Read ' + pathRenameFile)
-LogMessage ('Create diff report in ' + pathOutputFile)
-
-# Output file: Write to Diff_Bincodes sheet
-doDiff (outputFileDiffBincodesSheet, 0, renameTable, baseNameFile1, binDict1, baseNameFile2, binDict2, 1)
-
-# Output file: Write to Diff_Limits sheet
-doDiff (outputFileDiffLimitsSheet, 0, renameTable, baseNameFile1, limitsParamDict1, baseNameFile2, limitsParamDict2, 2)
-
-# Output file: Write to Diff_Inputs sheet
-doDiff (outputFileDiffInputsSheet, 0, renameTable, baseNameFile1, inputsParamDict1, baseNameFile2, inputsParamDict2, 3)
-
-# row = 0
-# # Output file: Write to Diff_Bincodes sheet
-# row = doDiff (outputFileDiffSheet, row, renameTable, baseNameFile1, binDict1, baseNameFile2, binDict2, 1)
-#
-# # Output file: Write to Diff_Limits sheet
-# row = doDiff (outputFileDiffSheet, row, renameTable, baseNameFile1, limitsParamDict1, baseNameFile2, limitsParamDict2, 2)
-#
-# # Output file: Write to Diff_Inputs sheet
-# row = doDiff (outputFileDiffSheet, row, renameTable, baseNameFile1, inputsParamDict1, baseNameFile2, inputsParamDict2, 3)
-
-
-# Output file: hide some compared fields of Limits parameters
-if args.hide:
-  hideFields = args.hide.split(',')
-  hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
-  hideParamFields (outputFileDiffInputsSheet, hideFields, False)
-
+if(args.dir):
+  print (path1)
+  print (path2)
+else:   
+  # Read DMLF files: path2
+  binDict1 = dict ()
+  limitsParamDict1 = dict ()
+  inputsParamDict1 = dict ()
+  parseDMLFFile (path1, binDict1, limitsParamDict1, inputsParamDict1)
+  
+  # Read DMLF files: path2
+  binDict2 = dict ()
+  limitsParamDict2 = dict ()
+  inputsParamDict2 = dict ()
+  parseDMLFFile (path2, binDict2, limitsParamDict2, inputsParamDict2)
+  
+  # Read rename file
+  renameTable = dict ()
+  renameTable['Old_ParamName'] = 'New_ParamName' # Dummy rename table
+  if args.renameFile:
+    # Update rename table & write to the output file
+    pathRenameFile = os.path.abspath (args.renameFile)
+    outputFileRenameSheet = outputFile.add_worksheet ('RenameTable')
+    parseRenameFile (pathRenameFile, renameTable)
+  
+  # Output file: Write to Log sheet
+  LogRow = 0
+  LogMessage ('Read ' + path1)
+  LogMessage ('Read ' + path2)
+  if args.renameFile:
+      LogMessage ('Read ' + pathRenameFile)
+  LogMessage ('Create diff report in ' + pathOutputFile)
+  
+  # Output file: Write to Diff_Bincodes sheet
+  doDiff (outputFileDiffBincodesSheet, 0, renameTable, baseName1, binDict1, baseName2, binDict2, 1)
+  
+  # Output file: Write to Diff_Limits sheet
+  doDiff (outputFileDiffLimitsSheet, 0, renameTable, baseName1, limitsParamDict1, baseName2, limitsParamDict2, 2)
+  
+  # Output file: Write to Diff_Inputs sheet
+  doDiff (outputFileDiffInputsSheet, 0, renameTable, baseName1, inputsParamDict1, baseName2, inputsParamDict2, 3)
+  
+  # row = 0
+  # # Output file: Write to Diff_Bincodes sheet
+  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, binDict1, baseName2, binDict2, 1)
+  #
+  # # Output file: Write to Diff_Limits sheet
+  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, limitsParamDict1, baseName2, limitsParamDict2, 2)
+  #
+  # # Output file: Write to Diff_Inputs sheet
+  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, inputsParamDict1, baseName2, inputsParamDict2, 3)
+  
+  
+  # Output file: hide some compared fields of Limits parameters
+  if args.hide:
+    hideFields = args.hide.split(',')
+    hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
+    hideParamFields (outputFileDiffInputsSheet, hideFields, False)
+  # Print to terminal
+  print ("Old file," + path1)
+  print ("New file," + path2)
+  if args.renameFile:
+      print ("RenameFile," + pathRenameFile)
+  print ("OutputFile," + pathOutputFile)
+  
+  
 outputFile.close () # saving output file
 
-# Print to terminal
-print ("Old file," + pathFile1)
-print ("New file," + pathFile2)
-if args.renameFile:
-    print ("RenameFile," + pathRenameFile)
-print ("OutputFile," + pathOutputFile)
+
