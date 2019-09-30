@@ -349,11 +349,11 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
 
   #*** Parameters ***
   if diffType == 1:
-    diffSheet.write (rowPos, 0, 'Compare Bincodes', xlsxBoldTextFormat)
+    diffSheet.write (rowPos, 0, 'Compare Bincodes: ' + nameFile1 + ' vs ' + nameFile2, xlsxBoldTextFormat)
   elif diffType == 2:
-    diffSheet.write (rowPos, 0, 'Compare Limits Parameters', xlsxBoldTextFormat)
+    diffSheet.write (rowPos, 0, 'Compare Limits Parameters: ' + nameFile1 + ' vs ' + nameFile2, xlsxBoldTextFormat)
   else:
-    diffSheet.write (rowPos, 0, 'Compare Inputs Parameters', xlsxBoldTextFormat)
+    diffSheet.write (rowPos, 0, 'Compare Inputs Parameters: ' + nameFile1 + ' vs ' + nameFile2, xlsxBoldTextFormat)
   rowPos += 1
 
   # Write Legends
@@ -508,7 +508,8 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
   if args.renameFile:
     diffSheet.write (rowParamRenamed, 1, renamedParameters, xlsxFormatRenamed)
   diffSheet.write (rowParamNotChanged, 1, notChangedParameters, None)
-  return rowPos
+  
+  return (rowPos + 1)
 
 
 def hideParamFields (outputFileDiffSheet, hideFields, isLimitsParam = True):
@@ -621,13 +622,13 @@ outputFileDiffInputsSheet = outputFile.add_worksheet ('Diff_Inputs') # pointer t
 
 xlsxBoldTextFormat = outputFile.add_format ({'bold': True})
 # Define format for the comparison:
-#    Removed field: Gray filled
+#    Removed field: Red filled
 #    Added field: Cyan filled
 #    Changed field: Yellow filled
 #    Renamed field: Green filled
 #    No Changed field: No color
 xlsxFormatRemoved = outputFile.add_format ()
-xlsxFormatRemoved.set_bg_color ('#808080')
+xlsxFormatRemoved.set_bg_color ('#FF0000')
 xlsxFormatAdded = outputFile.add_format ()
 xlsxFormatAdded.set_bg_color ('#00FFFF')
 xlsxFormatChanged = outputFile.add_format ()
@@ -635,71 +636,69 @@ xlsxFormatChanged.set_bg_color ('#FFFF00')
 xlsxFormatRenamed = outputFile.add_format ()
 xlsxFormatRenamed.set_bg_color ('#00FF00')
 
-if(args.dir):
-  print (path1)
-  print (path2)
-else:   
-  # Read DMLF files: path2
+LogRow = 0   
+rowDiffBinSheet = 0
+rowDiffLimitSheet = 0
+rowDiffInputSheet = 0
+
+# Read rename file
+renameTable = dict ()
+renameTable['Old_ParamName'] = 'New_ParamName' # Dummy rename table
+if args.renameFile:
+  # Update rename table & write to the output file
+  pathRenameFile = os.path.abspath (args.renameFile)
+  outputFileRenameSheet = outputFile.add_worksheet ('RenameTable')
+  parseRenameFile (pathRenameFile, renameTable)
+  LogMessage ('Read ' + pathRenameFile)
+
+  
+for file1, file2 in comparedFiles.items():
+  if(args.dir): 
+    pathFile1 = os.path.join(path1, file1)
+    pathFile2 = os.path.join(path2, file2)
+  else:
+    pathFile1 = path1
+    pathFile2 = path2  
+  
   binDict1 = dict ()
   limitsParamDict1 = dict ()
   inputsParamDict1 = dict ()
-  parseDMLFFile (path1, binDict1, limitsParamDict1, inputsParamDict1)
+  parseDMLFFile (pathFile1, binDict1, limitsParamDict1, inputsParamDict1)
   
   # Read DMLF files: path2
   binDict2 = dict ()
   limitsParamDict2 = dict ()
   inputsParamDict2 = dict ()
-  parseDMLFFile (path2, binDict2, limitsParamDict2, inputsParamDict2)
-  
-  # Read rename file
-  renameTable = dict ()
-  renameTable['Old_ParamName'] = 'New_ParamName' # Dummy rename table
-  if args.renameFile:
-    # Update rename table & write to the output file
-    pathRenameFile = os.path.abspath (args.renameFile)
-    outputFileRenameSheet = outputFile.add_worksheet ('RenameTable')
-    parseRenameFile (pathRenameFile, renameTable)
+  parseDMLFFile (pathFile2, binDict2, limitsParamDict2, inputsParamDict2)
   
   # Output file: Write to Log sheet
-  LogRow = 0
-  LogMessage ('Read ' + path1)
-  LogMessage ('Read ' + path2)
-  if args.renameFile:
-      LogMessage ('Read ' + pathRenameFile)
+  
+  LogMessage ('Read ' + pathFile1)
+  LogMessage ('Read ' + pathFile2)
   LogMessage ('Create diff report in ' + pathOutputFile)
   
   # Output file: Write to Diff_Bincodes sheet
-  doDiff (outputFileDiffBincodesSheet, 0, renameTable, baseName1, binDict1, baseName2, binDict2, 1)
+  rowDiffBinSheet = doDiff (outputFileDiffBincodesSheet, rowDiffBinSheet, renameTable, file1, binDict1, file2, binDict2, 1)
   
   # Output file: Write to Diff_Limits sheet
-  doDiff (outputFileDiffLimitsSheet, 0, renameTable, baseName1, limitsParamDict1, baseName2, limitsParamDict2, 2)
+  rowDiffLimitSheet = doDiff (outputFileDiffLimitsSheet, rowDiffLimitSheet, renameTable, file1, limitsParamDict1, file2, limitsParamDict2, 2)
   
   # Output file: Write to Diff_Inputs sheet
-  doDiff (outputFileDiffInputsSheet, 0, renameTable, baseName1, inputsParamDict1, baseName2, inputsParamDict2, 3)
-  
-  # row = 0
-  # # Output file: Write to Diff_Bincodes sheet
-  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, binDict1, baseName2, binDict2, 1)
-  #
-  # # Output file: Write to Diff_Limits sheet
-  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, limitsParamDict1, baseName2, limitsParamDict2, 2)
-  #
-  # # Output file: Write to Diff_Inputs sheet
-  # row = doDiff (outputFileDiffSheet, row, renameTable, baseName1, inputsParamDict1, baseName2, inputsParamDict2, 3)
+  rowDiffInputSheet = doDiff (outputFileDiffInputsSheet, rowDiffInputSheet, renameTable, file1, inputsParamDict1, file2, inputsParamDict2, 3)
   
   
-  # Output file: hide some compared fields of Limits parameters
-  if args.hide:
-    hideFields = args.hide.split(',')
-    hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
-    hideParamFields (outputFileDiffInputsSheet, hideFields, False)
-  # Print to terminal
-  print ("Old file," + path1)
-  print ("New file," + path2)
-  if args.renameFile:
-      print ("RenameFile," + pathRenameFile)
-  print ("OutputFile," + pathOutputFile)
+# Print to terminal
+print ("path1," + path1)
+print ("path2," + path2)
+if args.renameFile:
+    print ("RenameFile," + pathRenameFile)
+print ("OutputFile," + pathOutputFile)
   
+# Output file: hide some compared fields of Limits parameters
+if args.hide:
+  hideFields = args.hide.split(',')
+  hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
+  hideParamFields (outputFileDiffInputsSheet, hideFields, False)  
   
 outputFile.close () # saving output file
 
