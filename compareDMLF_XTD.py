@@ -12,25 +12,30 @@
 
 # $python compareDMLF_XTD.py -d Sample_DMLF \
 #                               Sample_DMLF \
-#                            --dev 90337BA
-#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,GROUP,TEST \
+#                            --dev 90337BA \
+#                            --cond PR150,PR35,PR175 \
+#                            --spec 002.05,002.06 \
+#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
 #                            --ignore NUM,DESC \
 #                            --renameFile RenameParam_90337.csv
 
 import sys
 import argparse
 import os
+import io
 import xlsxwriter
 from collections import namedtuple
 from collections import OrderedDict
 from datetime import datetime
-
+ 
 
 #### Global variables ####
 # Note: XTD DMLF file is separated in 3 parts: 1-Bin Code ; 2-Limits Parameter ;  3-Inputs Parameter
 BinStruct = namedtuple ("BinStruct", "BinCode BinType BinDesc")
-LimitsParamStruct = namedtuple ("LimitsParamStruct", "NUM MEAS PROMPT UNIT MEAS_TYPE BIN MIN_VALUE MAX_VALUE ARRAY_SIZE LOG DISPLAY STATISTICS RANGE ERROR GROUP TEST")
-InputsParamStruct = namedtuple ("InputsParamStruct", "NUM NAME UNIT DESC NOM_TYPE NOM_VALUE LOG DISPLAY GROUP TEST")
+# LimitsParamStruct = namedtuple ("LimitsParamStruct", "NUM MEAS PROMPT UNIT MEAS_TYPE BIN MIN_VALUE MAX_VALUE ARRAY_SIZE LOG DISPLAY STATISTICS RANGE ERROR GROUP TEST")
+# InputsParamStruct = namedtuple ("InputsParamStruct", "NUM NAME UNIT DESC NOM_TYPE NOM_VALUE LOG DISPLAY GROUP TEST")
+LimitsParamStruct = namedtuple ("LimitsParamStruct", "GROUP NUM MEAS MEAS_TYPE UNIT ARRAY_SIZE BIN LOG DISPLAY STATISTICS RANGE ERROR PROMPT TEST MIN_VALUE MAX_VALUE")
+InputsParamStruct = namedtuple ("InputsParamStruct", "GROUP NUM NAME NOM_TYPE UNIT LOG DISPLAY DESC TEST NOM_VALUE")
 
 #### Support function ####
 def get1stColumnPosOfOldParamsInDiffSheet ():
@@ -66,7 +71,7 @@ def LogMessage (str):
 
 def parseRenameFile (pathFile, renameTable):
 #   print ("Process file: " + pathFile)
-  file = open (pathFile, "r")
+  file = io.open (pathFile, "r", encoding = 'utf-8')
   row = 0
   for line in file:
       splittedLine = line.strip ('\n').split (',', 1)
@@ -83,12 +88,12 @@ def parseRenameFile (pathFile, renameTable):
 
 
 def parseDMLFFile (pathFile, binDict, limitsParamDict, inputsParamDict):
-#     print ("Process file: " + pathFile)
-    dmlfFile = open (pathFile, "r")
+#     print ("Process file: " + pathFile) 
+    dmlfFile = io.open (pathFile, "r", encoding = 'utf-8')
     lineNum = 1
     readPart = 0  # readPart = 1 : Start reading bincodes
-                  # readPart = 2 : Start reading fields of each evaluated parameter
-                  # readPart = 3 : Start reading fields of each input parameter
+                  # readPart = 2 : Start reading fields of limits parameters
+                  # readPart = 3 : Start reading fields of inputs parameters
     limitsParam = dict ()
     inputsParam = dict ()
     paramName = ''
