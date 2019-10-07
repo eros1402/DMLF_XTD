@@ -3,13 +3,14 @@
 # $cd /home/cph/Python/Softwares/XlsxWriter-1.0.4/
 # $sudo python setup.py install
 
-#Example: Cmd with translation file:
+#Example: compare 2 DMLF files:
 # $python compareDMLF_XTD.py Sample_DMLF/90337BA.PR35.002.05 \
 #                            Sample_DMLF/90337BA.PR35.002.06 \
-#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,GROUP,TEST \
+#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
 #                            --ignore NUM,DESC \
 #                            --renameFile RenameParam_90337.csv
 
+# Compare 2 DMLF folders
 # $python compareDMLF_XTD.py -d Sample_DMLF \
 #                               Sample_DMLF \
 #                            --dev 90337BA \
@@ -27,13 +28,11 @@ import xlsxwriter
 from collections import namedtuple
 from collections import OrderedDict
 from datetime import datetime
- 
+
 
 #### Global variables ####
 # Note: XTD DMLF file is separated in 3 parts: 1-Bin Code ; 2-Limits Parameter ;  3-Inputs Parameter
 BinStruct = namedtuple ("BinStruct", "BinCode BinType BinDesc")
-# LimitsParamStruct = namedtuple ("LimitsParamStruct", "NUM MEAS PROMPT UNIT MEAS_TYPE BIN MIN_VALUE MAX_VALUE ARRAY_SIZE LOG DISPLAY STATISTICS RANGE ERROR GROUP TEST")
-# InputsParamStruct = namedtuple ("InputsParamStruct", "NUM NAME UNIT DESC NOM_TYPE NOM_VALUE LOG DISPLAY GROUP TEST")
 LimitsParamStruct = namedtuple ("LimitsParamStruct", "GROUP NUM MEAS MEAS_TYPE UNIT ARRAY_SIZE BIN LOG DISPLAY STATISTICS RANGE ERROR PROMPT TEST MIN_VALUE MAX_VALUE")
 InputsParamStruct = namedtuple ("InputsParamStruct", "GROUP NUM NAME NOM_TYPE UNIT LOG DISPLAY DESC TEST NOM_VALUE")
 
@@ -88,7 +87,7 @@ def parseRenameFile (pathFile, renameTable):
 
 
 def parseDMLFFile (pathFile, binDict, limitsParamDict, inputsParamDict):
-#     print ("Process file: " + pathFile) 
+#     print ("Process file: " + pathFile)
     dmlfFile = io.open (pathFile, "r", encoding = 'utf-8')
     lineNum = 1
     readPart = 0  # readPart = 1 : Start reading bincodes
@@ -179,158 +178,6 @@ def parseDMLFFile (pathFile, binDict, limitsParamDict, inputsParamDict):
     dmlfFile.close ()
     return
 
-
-def doDiffWithoutRenameTable (diffSheet, nameFile1, paramDict1, nameFile2, paramDict2, diffType = 2):
-  global args
-  global xlsxFormatRemoved
-  global xlsxFormatAdded
-  global xlsxFormatRenamed
-  global xlsxFormatChanged
-
-  rowCnt = 0
-  sortedParamDict1 = dict()
-  sortedParamDict2 = dict()
-
-  if diffType == 1:
-    sortedParamDict1 = OrderedDict (sorted (paramDict1.items (), key = lambda x: x[1].BinCode))
-    sortedParamDict2 = OrderedDict (sorted (paramDict2.items (), key = lambda x: x[1].BinCode))
-    paramFields = BinStruct._fields
-  elif diffType == 2:
-    sortedParamDict1 = OrderedDict (sorted (paramDict1.items (), key = lambda x: x[1].NUM))
-    sortedParamDict2 = OrderedDict (sorted (paramDict2.items (), key = lambda x: x[1].NUM))
-    paramFields = LimitsParamStruct._fields
-  elif diffType == 3:
-    sortedParamDict1 = OrderedDict (sorted (paramDict1.items (), key = lambda x: x[1].NUM))
-    sortedParamDict2 = OrderedDict (sorted (paramDict2.items (), key = lambda x: x[1].NUM))
-    paramFields = InputsParamStruct._fields
-
-
-  #*** Parameters ***
-  # Overview
-  diffSheet.write (rowCnt, 1, 'Legends')
-  rowCnt += 1
-
-  diffSheet.write (rowCnt, 0, 'Removed parameters')
-  removedParameters = 0
-  rowParamRemoved = rowCnt
-  rowCnt += 1
-
-  diffSheet.write (rowCnt, 0, 'Added parameters')
-  addedParameters = 0
-  rowParamAdded = rowCnt
-  rowCnt += 1
-
-  diffSheet.write (rowCnt, 0, 'Changed parameters')
-  changedParameters = 0
-  rowParamChanged = rowCnt
-  rowCnt += 1
-
-  rowParamRenamed = 0
-  renamedParameters = 0
-  if args.renameFile:
-    diffSheet.write (rowCnt, 0, 'Renamed parameters')
-    rowParamRenamed = rowCnt
-    rowCnt += 1
-
-  diffSheet.write (rowCnt, 0, 'Not changed parameters')
-  notChangedParameters = 0
-  rowParamNotChanged = rowCnt
-  rowCnt += 1
-
-  # Add headers
-  diffSheet.write (rowCnt, get1stColumnPosOfOldParamsInDiffSheet(), nameFile1)
-  diffSheet.write (rowCnt, get1stColumnPosOfNewParamsInDiffSheet(diffType), nameFile2)
-  rowCnt += 1
-  diffSheet.write (rowCnt, 0, 'RESULT')
-
-  colCnt = 1;
-  for i in range (1, 3):
-    for field in paramFields:
-      diffSheet.write (rowCnt, colCnt, field + '_' + str(i))
-      colCnt += 1
-
-  rowCnt += 1
-
-  ### Check removed parameters
-  for param1, paramStruct1 in sortedParamDict1.items ():
-    if param1 not in sortedParamDict2:
-#       print("Removed parameter: " + param1)
-      diffSheet.write (rowCnt, 0, 'Removed')
-      colPos = get1stColumnPosOfOldParamsInDiffSheet ()
-      for field in paramStruct1:
-        diffSheet.write (rowCnt, colPos, field, xlsxFormatRemoved)
-        colPos += 1
-
-      removedParameters += 1
-      rowCnt += 1
-
-  ### Check added parameters
-  for param2, paramStruct2 in sortedParamDict2.items ():
-    if param2 not in sortedParamDict1:
-#       print("Added parameter: " + param2)
-      diffSheet.write (rowCnt, 0, 'Added')
-
-      colPos = get1stColumnPosOfNewParamsInDiffSheet (diffType)
-      for field in paramStruct2:
-        diffSheet.write (rowCnt, colPos, field, xlsxFormatAdded)
-        colPos += 1
-      addedParameters += 1
-      rowCnt += 1
-
-  ### Check changed parameters
-  for param1, paramStruct1 in sortedParamDict1.items ():
-    if param1 in sortedParamDict2:
-        paramStruct2 = sortedParamDict2[param1]
-        changedFields = dict ()
-        paramChanged = False;
-
-        for field in paramFields:
-          changedFields[field] = False if field in args.ignore else getattr(paramStruct1, field) != getattr(paramStruct2, field)
-          paramChanged = paramChanged or changedFields[field]
-
-        if paramChanged:
-#           print("Changed parameter: " + param1)
-          diffSheet.write (rowCnt, 0, 'Changed')
-          colPos1 = get1stColumnPosOfOldParamsInDiffSheet ()
-          colPos2 = get1stColumnPosOfNewParamsInDiffSheet (diffType)
-          for field in paramFields:
-            diffSheet.write (rowCnt, colPos1, getattr(paramStruct1, field), xlsxFormatChanged if changedFields[field] else None)
-            diffSheet.write (rowCnt, colPos2, getattr(paramStruct2, field), xlsxFormatChanged if changedFields[field] else None)
-            colPos1 += 1
-            colPos2 += 1
-          changedParameters += 1
-          rowCnt += 1
-
-  # Report not changed parameters
-  for param1, paramStruct1 in sortedParamDict1.items ():
-    if param1 in sortedParamDict2:
-      paramStruct2 = sortedParamDict2[param1]
-      changedFields = dict ()
-      paramChanged = False;
-      for field in paramFields:
-        changedFields[field] = False if field in args.ignore else getattr(paramStruct1, field) != getattr(paramStruct2, field)
-        paramChanged = paramChanged or changedFields[field]
-
-      if not paramChanged:
-#         diffSheet.write (rowCnt, 0, 'Not changed')
-#         colPos1 = get1stColumnPosOfOldParamsInDiffSheet ()
-#         colPos2 = get1stColumnPosOfNewParamsInDiffSheet (diffType)
-#         for field in paramFields:
-#           diffSheet.write (rowCnt, colPos1, getattr(paramStruct1, field))
-#           diffSheet.write (rowCnt, colPos2, getattr(paramStruct2, field))
-#           colPos1 += 1
-#           colPos2 += 1
-        rowCnt += 1
-        notChangedParameters += 1
-
-
-  diffSheet.write (rowParamRemoved, 1, removedParameters, xlsxFormatRemoved)
-  diffSheet.write (rowParamAdded, 1, addedParameters, xlsxFormatAdded)
-  diffSheet.write (rowParamChanged, 1, changedParameters, xlsxFormatChanged)
-  if args.renameFile:
-    diffSheet.write (rowParamRenamed, 1, renamedParameters, xlsxFormatRenamed)
-  diffSheet.write (rowParamNotChanged, 1, notChangedParameters, None)
-  return
 
 def isParamRenamed (param, renameTable):
   global args
