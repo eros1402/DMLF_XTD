@@ -1,28 +1,50 @@
 # DMLF_XTD
 Script for comparisons between DMLF files of XTD tester
 
--*- coding: utf-8 -*-
-Make sure that the xlsxwriter package was installed. If not:
+The compiled script can be found in the distributions (**dist**) folder.
 
-$cd ./Support/XlsxWriter-1.0.4/
+Templates of compare table and rename table can be found in the **Support** folder
 
-$sudo python setup.py install
+For detail information:
 
-Example: compare 2 DMLF files:
+    $./dist/pyCompareXTDDmlf -h
 
-$python compareDMLF_XTD.py Sample_DMLF/90337BA.PR35.002.05 \
-                           Sample_DMLF/90337BA.PR35.002.06 \
-                           --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
-                           --ignore NUM,DESC \
-                           --renameFile RenameParam_90337.csv
+# Command line example
 
-Compare 2 DMLF folders
+Example 1: compare 2 DMLF files:
 
-$python compareDMLF_XTD.py -d Sample_DMLF \
-                              Sample_DMLF \
-                           --dev 90337BA \
-                           --cond PR150,PR35,PR175 \
-                           --spec 002.05,002.06 \
-                           --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
-                           --ignore NUM,DESC \
-                           --renameFile RenameParam_90337.csv
+    $./dist/pyCompareXTDDmlf   Sample_DMLF/90337BA.PR35.002.05 \
+                               Sample_DMLF/90337BA.PR35.002.06 \
+                               --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
+                               --ignore ERROR,PROMPT,TEST \
+                               --renameFile RenameParam_90337.csv
+
+Example 2: compare DMLF files in 2 folders (1 device, 2 spec versions):
+
+    Folder1_path/90337BA.PR150.002.05   Vs  Folder2_path/90337BA.PR150.002.06
+    Folder1_path/90337BA.PR35.002.05    Vs  Folder2_path/90337BA.PR35.002.06
+    Folder1_path/90337BA.PR175.002.05   Vs  Folder2_path/90337BA.PR175.002.06
+
+    $./dist/pyCompareXTDDmlf -D Folder1_path \
+                                Folder2_path \
+                               --dev 90337BA \
+                               --cond PR150,PR35,PR175 \
+                               --spec 002.05,002.06 \
+                               --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
+                               --ignore ERROR,PROMPT,TEST \
+                               --renameFile RenameParam_90337.csv
+
+Example 3: compare DMLF files in 2 folders (2 devices, 2 spec versions):
+
+    Folder1_path/90337BA.PR150.002.05   Vs  Folder2_path/90337CA.PR150.002.06
+    Folder1_path/90337BA.PR35.002.05    Vs  Folder2_path/90337CA.PR35.002.06
+    Folder1_path/90337BA.PR175.002.05   Vs  Folder2_path/90337CA.PR175.002.06
+
+    $./dist/pyCompareXTDDmlf   -D Folder1_path
+                                  Folder2_path
+                               --dev  90337BA,90337CA
+                               --cond PR150,PR35,PR175
+                               --spec 002.05,002.06
+                               --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST
+                               --ignore ERROR,PROMPT,TEST
+                               --renameFile RenameParam_90337.csv

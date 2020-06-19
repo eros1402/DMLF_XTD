@@ -1,24 +1,7 @@
 # -*- coding: utf-8 -*-
 # Make sure that the xlsxwriter package was installed. If not:
-# $cd /home/cph/Python/Softwares/XlsxWriter-1.0.4/
+# $cd ./Support/XlsxWriter-1.0.4/
 # $sudo python setup.py install
-
-#Example: compare 2 DMLF files:
-# $python compareDMLF_XTD.py Sample_DMLF/90337BA.PR35.002.05 \
-#                            Sample_DMLF/90337BA.PR35.002.06 \
-#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
-#                            --ignore NUM,DESC \
-#                            --renameFile RenameParam_90337.csv
-
-# Compare 2 DMLF folders
-# $python compareDMLF_XTD.py -d Sample_DMLF \
-#                               Sample_DMLF \
-#                            --dev 90337BA \
-#                            --cond PR150,PR35,PR175 \
-#                            --spec 002.05,002.06 \
-#                            --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST \
-#                            --ignore NUM,DESC \
-#                            --renameFile RenameParam_90337.csv
 
 import sys
 import argparse
@@ -33,10 +16,75 @@ from datetime import datetime
 #### Global variables ####
 # Note: XTD DMLF file is separated in 3 parts: 1-Bin Code ; 2-Limits Parameter ;  3-Inputs Parameter
 BinStruct = namedtuple ("BinStruct", "BinCode BinType BinDesc")
+AllParamStruct    = namedtuple ("AllParamStruct",    "NUM PROMPT UNIT MEAS MEAS_TYPE BIN RES MIN MIN_VALUE MAX MAX_VALUE ARRAY_SIZE LOG DISPLAY STATISTICS RANGE ERROR GROUP TEST NAME DESC NOM NOM_TYPE NOM_VALUE")
 LimitsParamStruct = namedtuple ("LimitsParamStruct", "GROUP NUM MEAS MEAS_TYPE UNIT ARRAY_SIZE BIN LOG DISPLAY STATISTICS RANGE ERROR PROMPT TEST MIN_VALUE MAX_VALUE")
 InputsParamStruct = namedtuple ("InputsParamStruct", "GROUP NUM NAME NOM_TYPE UNIT LOG DISPLAY DESC TEST NOM_VALUE")
 
+NonValueFields    = ['NUM', 'MEAS_TYPE', 'UNIT', 'ARRAY_SIZE', 'BIN', 'LOG', 'DISPLAY', 'STATISTICS', 'RANGE', 'ERROR', 'PROMPT', 'TEST', 'NOM_TYPE', 'DESC']
+
+ProgDesc = 'pyCompareXTDDmlf is a standalone program to compare XTD DMLF files and generate an excel report file'
+CommandLineExample = '''\
+----------------------------------------------------------
+Example 1: compare 2 DMLF files:
+$./pyCompareXTDDmlf       Sample_DMLF/90337BA.PR35.002.05 
+                         Sample_DMLF/90337BA.PR35.002.06 
+                         --hide PROMPT,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST 
+                         --ignore ERROR,PROMPT,TEST 
+                         --renameFile RenameParam_90337.csv
+
+Example 2: compare DMLF files in 2 folders (1 device, 2 spec versions):
+    Folder1_path/90337BA.PR150.002.05   Vs  Folder2_path/90337BA.PR150.002.06 
+    Folder1_path/90337BA.PR35.002.05    Vs  Folder2_path/90337BA.PR35.002.06 
+    Folder1_path/90337BA.PR175.002.05   Vs  Folder2_path/90337BA.PR175.002.06
+
+$./pyCompareXTDDmlf        -D Folder1_path 
+                              Folder2_path 
+                           --dev  90337BA 
+                           --cond PR150,PR35,PR175 
+                           --spec 002.05,002.06 
+                           --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST 
+                           --ignore ERROR,PROMPT,TEST 
+                           --renameFile RenameParam_90337.csv
+
+Example 3: compare DMLF files in 2 folders (2 devices, 2 spec versions):
+    Folder1_path/90337BA.PR150.002.05   Vs  Folder2_path/90337CA.PR150.002.06 
+    Folder1_path/90337BA.PR35.002.05    Vs  Folder2_path/90337CA.PR35.002.06 
+    Folder1_path/90337BA.PR175.002.05   Vs  Folder2_path/90337CA.PR175.002.06
+
+$./pyCompareXTDDmlf        -D Folder1_path 
+                              Folder2_path 
+                           --dev  90337BA,90337CA 
+                           --cond PR150,PR35,PR175 
+                           --spec 002.05,002.06 
+                           --hide PROMPT,RES,MIN,MAX,ARRAY_SIZE,LOG,DISPLAY,STATISTICS,ERROR,TEST 
+                           --ignore ERROR,PROMPT,TEST 
+                           --renameFile RenameParam_90337.csv
+----------------------------------------------------------                           
+'''
+
+ROW_GROUP1 = 1
+ROW_GROUP2 = 2
+
 #### Support function ####
+
+def get_args():
+    parser = argparse.ArgumentParser (description= ProgDesc, formatter_class=argparse.RawDescriptionHelpFormatter, epilog=CommandLineExample)
+    parser.add_argument ('path1', help='path of the \"old\" DMLF file (default) or folder (specify with -D)')
+    parser.add_argument ('path2', help='path of the \"new\" DMLF file (default) or folder (specify with -D)')
+    parser.add_argument ('-D', '--dir', action='store_true', help='Indicate path1 & path2 are directories. This option is go along with -f to specify compare table (or -d/-s/-c to specify deviceName/specVersion/condition)')
+    parser.add_argument ('-f', '--compareFile', default='', help='The path of the file contained comparison table of DMLF files.')
+    parser.add_argument ('-d', '--dev', default = '', help = 'The list of maximum 2 compared device names, separate by comma \',\'. This option is required when paths are directories and compareFile is not given.\nE.g --dev 90337BA')
+    parser.add_argument ('-s', '--spec', default='', help='The list of maximum 2 compared spec versions, separate by comma \',\'. This option is required when paths are directories and compareFile is not given.\nE.g --spec 002.05,002.06')
+    parser.add_argument ('-c', '--cond', default = '', help = 'The list of compared condtions, separate by comma \',\'. This option is required when paths are directories and compareFile is not given.\nE.g --cond PR35,PR150,PR175')
+    parser.add_argument ('-i', '--ignore', default='NUM', help='The list of ignored fields in the parameter comparison (default=%(default)s). The feasible fields given should be in the set: {' + ','.join(AllParamStruct._fields)+'}. \nE.g --ignore ERROR,DISPLAY,RES')
+    parser.add_argument ('-H', '--hide', default='NUM,TEST', help='The list of hidden fields in the report file(default=%(default)s). The feasible fields given should be in the set: {' + ','.join(AllParamStruct._fields)+'}.\nE.g --hide PROMPT,ERROR,GROUP,TEST')
+    parser.add_argument ('-r', '--renameFile', default='', help='The path of the file containted renaming table of parameters.\nE.g --renameFile renamedParam_90337.csv')
+    parser.add_argument ('-o', '--output', help='Customize the name of output file. Remark: \'.xlsx\' is automatically attached at the end of the name')
+    parser.add_argument ('-l', action='store_true', help='Show only fields: GROUP, MEAS, MIN_VALUE, NOM_VALUE, MAX_VALUE in the report, hide the other fields')
+    args = parser.parse_args ()
+    return args
+
+
 def get1stColumnPosOfOldParamsInDiffSheet ():
   return 1
 
@@ -67,6 +115,19 @@ def LogMessage (str):
   LogRow += 1
   return
 
+
+def parseCompareFile (pathFile, compareTable):
+  file = io.open (pathFile, "r", encoding = 'utf-8')
+
+  for line in file:
+      splittedLine = line.strip ('\n').split (',', 1)
+      if (len (splittedLine) >= 2):
+          file1 = splittedLine[0]
+          file2 = splittedLine[1].strip('\r').strip().replace(',','')
+          compareTable[file1] = file2
+
+  file.close()
+  return
 
 def parseRenameFile (pathFile, renameTable):
 #   print ("Process file: " + pathFile)
@@ -194,6 +255,16 @@ def getParam1ByParam2InRenameTable (RenameTable, param2):
     if p2 == param2:
       return p1
 
+def setWorksheetRowGroupingLevel (worksheet, rowPos, level = 1, hidden = False):
+  # check level
+  if (level < 0) or (level > 7):
+    sys.exit("Error: Invalid grouping row level : %d " %level)
+  if not hidden:
+    worksheet.set_row(rowPos, None, None, {'level': level})
+  else:
+    worksheet.set_row(rowPos, None, None, {'level': level, 'hidden': True})
+
+  return
 
 def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, paramDict2, diffType = 2):
   global args
@@ -264,7 +335,9 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
   # Add headers
   diffSheet.write (rowPos, get1stColumnPosOfOldParamsInDiffSheet(), nameFile1)
   diffSheet.write (rowPos, get1stColumnPosOfNewParamsInDiffSheet(diffType), nameFile2)
+  setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1)
   rowPos += 1
+
   diffSheet.write (rowPos, 0, 'RESULT')
 
   colCnt = 1;
@@ -273,6 +346,7 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
       diffSheet.write (rowPos, colCnt, field + '_' + str(i))
       colCnt += 1
 
+  setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1)
   rowPos += 1
 
   ### Check removed parameters
@@ -289,6 +363,7 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
           colPos += 1
 
         numOfRemovedParameters += 1
+        setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1)
         rowPos += 1
 
   ### Check added parameters
@@ -305,6 +380,7 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
           diffSheet.write (rowPos, colPos, field, xlsxFormatAdded)
           colPos += 1
         numOfAddedParameters += 1
+        setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1)
         rowPos += 1
 
   ### Check changed parameters
@@ -324,7 +400,8 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
 
         for field in paramFields:
           isParamNameField = field in paramNameFields
-          changedFields[field] = False if ((field in args.ignore) or ((doRename) and (isParamNameField))) else getattr(paramStruct1, field) != getattr(paramStruct2, field)
+          isIgnoredField = (field in args.ignore) or (field == 'NUM')
+          changedFields[field] = False if ( isIgnoredField or ((doRename) and (isParamNameField)) ) else getattr(paramStruct1, field) != getattr(paramStruct2, field)
           isParamChanged = isParamChanged or changedFields[field]
 
         if (isParamChanged or doRename):
@@ -348,6 +425,8 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
 
           if isParamChanged:
             numOfChangedParameters += 1
+
+          setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1)
           rowPos += 1
 
   # Report not changed parameters
@@ -357,7 +436,8 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
       changedFields = dict ()
       isParamChanged = False;
       for field in paramFields:
-        changedFields[field] = False if field in args.ignore else getattr(paramStruct1, field) != getattr(paramStruct2, field)
+        isIgnoredField = (field in args.ignore) or (field == 'NUM')
+        changedFields[field] = False if isIgnoredField else getattr(paramStruct1, field) != getattr(paramStruct2, field)
         isParamChanged = isParamChanged or changedFields[field]
 
       if not isParamChanged:
@@ -373,6 +453,7 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
         # Hide no changed rows
         diffSheet.set_row (rowPos,None, None, {'hidden': True})
 
+        setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP2, True)
         rowPos += 1
         numOfNoChangedParameters += 1
 
@@ -384,7 +465,8 @@ def doDiff (diffSheet, startRow, renameTable, nameFile1, paramDict1, nameFile2, 
     diffSheet.write (rowParamRenamed, 1, numOfRenamedParameters, xlsxFormatRenamed)
   diffSheet.write (rowParamNotChanged, 1, numOfNoChangedParameters, None)
 
-  return (rowPos + 1)
+  setWorksheetRowGroupingLevel(diffSheet, rowPos, ROW_GROUP1, True)
+  return (rowPos + 2)
 
 
 def hideParamFields (outputFileDiffSheet, hideFields, isLimitsParam = True):
@@ -412,64 +494,85 @@ def hideParamFields (outputFileDiffSheet, hideFields, isLimitsParam = True):
   return
 
 
+#---------------------#
+###### __main__ #######
 
-#### __main__ ####
 
-# Adding arguments from cmd line
-
-parser = argparse.ArgumentParser (description='Compare XTD DMLF files')
-parser.add_argument ('path1', help='path of the old DMLF file (default) or folder (with -d/--dir)')
-parser.add_argument ('path2', help='path of the new DMLF file (default) or folder (with -d/--dir)')
-parser.add_argument ('-d', '--dir', action='store_true', help='Indicate path1 & path2 are to directories')
-parser.add_argument ('--dev', default = '', help = 'Device name, only needed when paths are directories. E.g --dev 90337BA')
-parser.add_argument ('--cond', default = '', help = 'The list of compared condtions, only needed when paths are directories. E.g --cond PR35,PR150,PR175')
-parser.add_argument ('--spec', default = '', help = 'The list of compared spec versions, only needed when paths are directories and can only put max 2 spec versions. E.g --spec 002.05,002.06')
-parser.add_argument ('--renameFile', default = '', help='The link of renamed parameter file. E.g --renameFile renamedParam_12125.csv')
-parser.add_argument ('--ignore', default='', choices=LimitsParamStruct._fields, help='The list of ignored fields in the parameter comparison')
-parser.add_argument ('--hide', default='', help='The list of hided fields in the report file. E.g --hide PROMPT,MIN,MAX,ERROR,DISPLAY,RES,BIN,ARRAY_SIZE,LOG,ERROR,GROUP,TEST')
-args = parser.parse_args ()
+#### Getting arguments from cmd line
+args = get_args()
 
 path1 = os.path.abspath (args.path1)
 path2 = os.path.abspath (args.path2)
 baseName1 = os.path.basename (args.path1)
 baseName2 = os.path.basename (args.path2)
 
-# Check the Paths are valid & other arguments
+#### Check the Paths & other arguments are valid
 if (args.dir):
     if ('.' in baseName1) :
         sys.exit ("Error: Invalid directory path : " + path1)
     elif ('.' in baseName2):
         sys.exit ("Error: Invalid directory path : " + path2)
 
-    if not (args.dev):
-        sys.exit ("Error: Please specify device name with --dev=deviceName")
+    if (not (args.compareFile) and not(args.dev) and not(args.spec) and not(args.cond)):
+      sys.exit("Error: Missing arguments. Please specify compareFile path (with -f) or deviceName/specVersion/condition with -d/-s/-c")
     else:
-        device = args.dev
+      if not (args.compareFile):
+        if not (args.dev):
+          sys.exit ("Error: Missing arguments. Please specify device name with -d/--dev='list of max 2 devices'. E.g --dev='90337BA, 90337CA'")
+        else:
+          devices = args.dev.strip('\'')
+          devices = devices.replace(' ', '').split(',')
+          if (len(devices) > 2) :
+            sys.exit ("Error: Only can put max 2 devices")
 
-    if not (args.cond):
-        sys.exit ("Error: Please specify conditions with --cond='listOfConditions'")
-    else:
-        conds = args.cond.strip('\'')
-        conditions = conds.split(',')
+        if not (args.spec):
+          sys.exit ("Error: Missing arguments. Please specify spec versions with -s/--spec='list Of max 2 SpecVersions'. E.g --spec='003.01, 003.02'")
+        else:
+          specs = args.spec.strip('\'')
+          versions = specs.replace(' ', '').split(',')
+          if (len(versions) > 2) :
+            sys.exit ("Error: Only can put max 2 spec versions")
 
-    if not (args.spec):
-        sys.exit ("Error: Please spec versions with --spec='listOfSpecVersion'")
-    else:
-        specs = args.spec.strip('\'')
-        versions = specs.split(',')
-        if (len(versions) > 2) :
-          sys.exit ("Error: Only can put max 2 spec conditions")
+        if not (args.cond):
+          sys.exit ("Error: Missing arguments. Please specify conditions with -c/--cond='list Of Conditions'. E.g --cond='PR150, PR35, PR175'")
+        else:
+          conds = args.cond.strip('\'')
+          conditions = conds.replace(' ', '').split(',')
+
 else:
     if ('.' not in baseName1) :
         sys.exit("Error: Invalid DMLF file path : " + path1)
     elif ('.' not in baseName2):
         sys.exit("Error: Invalid DMLF file path : " + path2)
 
-comparedFiles = dict ()
+
+compareTable = OrderedDict()
+if args.compareFile:
+  # Update rename table & write to the output file
+  pathCompareFile = os.path.abspath(args.compareFile)
+  parseCompareFile(pathCompareFile, compareTable)
+
+### Extract each pair of files to compare
+# comparedFiles = dict ()
+comparedFiles = OrderedDict () # use OrderedDict() to keep the order as input argument
 comparedFiles.clear()
+dev1 = ''
 ver1 = ''
+dev2 = ''
 ver2 = ''
 if(args.dir):
+  if args.compareFile:
+    for fileVer1, fileVer2 in compareTable.items():
+      if (('.' in fileVer1) and ('.' in fileVer2)):
+        comparedFiles[fileVer1] = fileVer2
+  else:
+    if len(devices) == 2:
+      dev1 = devices[0]
+      dev2 = devices[1]
+    elif len(devices) == 1:
+      dev1 = devices[0]
+      dev2 = devices[0]
+
     if len(versions) == 2:
       ver1 = versions[0]
       ver2 = versions[1]
@@ -479,19 +582,24 @@ if(args.dir):
 
     comparedFiles.clear()
     for cond in conditions:
-      fileVer1 = device + '.' + cond + '.' + ver1
-      fileVer2 = device + '.' + cond + '.' + ver2
+      fileVer1 = dev1 + '.' + cond + '.' + ver1
+      fileVer2 = dev2 + '.' + cond + '.' + ver2
       comparedFiles[fileVer1] = fileVer2
 else:
   comparedFiles[baseName1] = baseName2
 
-# Define output file:
-#        Output file sheets : Log sheet - Diff_Bincodes - Diff_Limits - Diff_Inputs
+#### Define output file:
+#    Output xlsx file : Log sheet - Diff_Bincodes - Diff_Limits - Diff_Inputs
 name1 = baseName1.replace('.','_')
 name2 = baseName2.replace('.','_')
 pathOutputFile = os.path.abspath (os.path.join (os.getcwd (), 'diff_' + name1 + '_vs_' + name2 + '.xlsx'))
-if (args.dir):
-  pathOutputFile = os.path.abspath (os.path.join (os.getcwd (), 'diff_' + device + '_SP' + ver1 + '_vs_SP' + ver2 + '.xlsx'))
+if (args.output):
+  pathOutputFile = os.path.abspath(os.path.join(os.getcwd(), args.output + '.xlsx'))
+else:
+  if (args.dir):
+    if not args.compareFile:
+      pathOutputFile = os.path.abspath (os.path.join (os.getcwd (), 'diff_' + dev1 + '_SP' + ver1.replace('.', '') + '_vs_' + dev2 + '_SP' + ver2.replace('.', '') + '.xlsx'))
+
 outputFile = xlsxwriter.Workbook (pathOutputFile)
 outputFileLogSheet = outputFile.add_worksheet ('Log')   # pointer to Log sheet
 outputFileDiffBincodesSheet = outputFile.add_worksheet ('Diff_Bincodes') # pointer to Diff_Limits sheet
@@ -500,12 +608,13 @@ outputFileDiffInputsSheet = outputFile.add_worksheet ('Diff_Inputs') # pointer t
 # outputFileDiffSheet = outputFile.add_worksheet ('Diff') # pointer to Diff_Limits sheet
 
 xlsxBoldTextFormat = outputFile.add_format ({'bold': True})
-# Define format for the comparison:
+
+#### Define legends for the comparison:
 #    Removed field: Red filled
-#    Added field: Cyan filled
+#    Added   field: Cyan filled
 #    Changed field: Yellow filled
 #    Renamed field: Green filled
-#    No Changed field: No color
+#    NoChanged field: No color
 xlsxFormatRemoved = outputFile.add_format ()
 xlsxFormatRemoved.set_bg_color ('#FF0000')
 xlsxFormatAdded = outputFile.add_format ()
@@ -520,7 +629,11 @@ rowDiffBinSheet = 0
 rowDiffLimitSheet = 0
 rowDiffInputSheet = 0
 
-# Read rename file
+#### Log compare file
+if args.compareFile:
+  LogMessage('Read comparison table from: ' + pathCompareFile)
+
+#### Read rename file
 renameTable = dict ()
 renameTable['Old_ParamName'] = 'New_ParamName' # Dummy rename table
 if args.renameFile:
@@ -528,9 +641,9 @@ if args.renameFile:
   pathRenameFile = os.path.abspath (args.renameFile)
   outputFileRenameSheet = outputFile.add_worksheet ('RenameTable')
   parseRenameFile (pathRenameFile, renameTable)
-  LogMessage ('Read ' + pathRenameFile)
+  LogMessage ('Read renaming table from: ' + pathRenameFile)
 
-
+#### Process comparisons
 for file1, file2 in comparedFiles.items():
   if(args.dir):
     pathFile1 = os.path.join(path1, file1)
@@ -539,12 +652,13 @@ for file1, file2 in comparedFiles.items():
     pathFile1 = path1
     pathFile2 = path2
 
+  # Read DMLF file1
   binDict1 = dict ()
   limitsParamDict1 = dict ()
   inputsParamDict1 = dict ()
   parseDMLFFile (pathFile1, binDict1, limitsParamDict1, inputsParamDict1)
 
-  # Read DMLF files: path2
+  # Read DMLF file2
   binDict2 = dict ()
   limitsParamDict2 = dict ()
   inputsParamDict2 = dict ()
@@ -552,9 +666,8 @@ for file1, file2 in comparedFiles.items():
 
   # Output file: Write to Log sheet
 
-  LogMessage ('Read ' + pathFile1)
-  LogMessage ('Read ' + pathFile2)
-  LogMessage ('Create diff report in ' + pathOutputFile)
+  LogMessage ('Compared: \"' + pathFile1 + '\" Vs \"' + pathFile2 + '\"')
+  # LogMessage ('Created diff report in ' + pathOutputFile)
 
   # Output file: Write to Diff_Bincodes sheet
   rowDiffBinSheet = doDiff (outputFileDiffBincodesSheet, rowDiffBinSheet, renameTable, file1, binDict1, file2, binDict2, 1)
@@ -566,17 +679,20 @@ for file1, file2 in comparedFiles.items():
   rowDiffInputSheet = doDiff (outputFileDiffInputsSheet, rowDiffInputSheet, renameTable, file1, inputsParamDict1, file2, inputsParamDict2, 3)
 
 
-# Print to terminal
-print ("path1," + path1)
-print ("path2," + path2)
-if args.renameFile:
-    print ("RenameFile," + pathRenameFile)
-print ("OutputFile," + pathOutputFile)
-
-# Output file: hide some compared fields of Limits parameters
+### Output file: hide some compared fields of Diff_Limits & Diff_Inputs sheets
 if args.hide:
-  hideFields = args.hide.split(',')
-  hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
-  hideParamFields (outputFileDiffInputsSheet, hideFields, False)
+  hideFields = args.hide.strip('\'').replace(' ', '').split(',')
 
-outputFile.close () # saving output file
+if args.l:
+  hideFields = hideFields + NonValueFields
+
+hideParamFields (outputFileDiffLimitsSheet, hideFields, True)
+hideParamFields (outputFileDiffInputsSheet, hideFields, False)
+
+
+### saving & closing output file
+outputFile.close ()
+
+
+#### Print to terminal when finished
+print ("Output file : " + pathOutputFile)
